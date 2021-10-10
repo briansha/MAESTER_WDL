@@ -8,7 +8,6 @@ FROM ubuntu:18.04
 WORKDIR /cromwell_root/
 
 # Install Python3, Java, and other packages.
-# Removed python, python-pip
 RUN apt-get update && apt-get install -y --no-install-recommends \
       wget \
       curl \
@@ -37,17 +36,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       default-jre \
       libncurses5-dev
 
-# Alias python3 as python - bedtools uses the python command in its make script.
+# Maegatk seems to attempt to run some things using the python command, when it actually needs to run python3.
+# Alias python3 as python.
 # https://stackoverflow.com/questions/36388465/how-to-set-bash-aliases-for-docker-containers-in-dockerfile
 # Dockerfile - installation of packages uses a non-interactive shell
-# WDL command section - this uses an interactive shell(?) and will need 'alias python=python3' to work.
-#  - Upon running - the alias did not work for the WDL. The symbolic link below (ln -s) may work as it does in docker run.
-# This will also be the case for many scripts - maegatk uses the python command often,
-# but in maegatk's case, it wants to run python3. (And some packages it wants to use are only available for python3.)
+# WDL command section - using 'alias python=python3' did not work. 
+#   - The symbolic link at the bottom of this script below (ln -s) does.
+# Many scripts use the python command often in their installation, such as bedtools using the python command in its make script.
+# However, in maegatk's case, it needs to run python3 whenever it wants to run python. (As some packages it wants to use are only available for python3.)
+# The RUN command below works, but only for installation of packages onto the docker image.
+#   - In the WDL command section, it is prone to some errors:
+#     - /usr/bin/python: 1: /usr/bin/python: -e: not found
+#     - python3
 #RUN echo 'alias python=python3' >> ~/.bashrc
-#The below works but is prone to some errors:
-# - /usr/bin/python: 1: /usr/bin/python: -e: not found
-# - python3
 RUN echo -e '#!/bin/bash\necho python3' > /usr/bin/python && \
       chmod +x /usr/bin/python
 
@@ -70,14 +71,12 @@ WORKDIR /cromwell_root/
 # maegatk - https://github.com/caleblareau/maegatk
 RUN pip3 install maegatk
 
-# The two below need to be in the WDL for maegatk to run.
+# The two below need to be in the WDL command section for maegatk to run properly.
 # export LC_ALL=C.UTF-8
 # export LANG=C.UTF-8
 
 # Libraries maegatk needs - pysam, R 4.1.0, BiocManager (SummarizedExperiment), data.table, setuptools, ruamel_yaml, samtools
-# (these are found out not in the documention, but when trying to run an analysis...and it fails)
-# The analysis also seems to run some things using the python command - but it needs python 3+.
-# Will need to alias it in the WDL. alias python=python3.
+#   - These are found out not in the documention, but rather when trying to run an analysis...and it fails.
 RUN curl -O https://cdn.rstudio.com/r/ubuntu-1804/pkgs/r-4.1.0_1_amd64.deb
 RUN DEBIAN_FRONTEND=noninteractive gdebi -n r-4.1.0_1_amd64.deb
 RUN ln -s /opt/R/4.1.0/bin/R /usr/local/bin/R
@@ -98,11 +97,6 @@ RUN make install
 WORKDIR /cromwell_root/
 RUN rm -r samtools-1.13
 
-# Remove the python "alias" - make a symbolic link instead.
+# Remove the python alias - make a symbolic link instead - this will stick.
 RUN rm /usr/bin/python
 RUN ln -s /usr/bin/python3 /usr/bin/python
-
-# Testing purposes only
-#COPY cell_barcodes.txt /cromwell_root/
-#COPY merged.bam /cromwell_root/
-#COPY merged.bam.bai /cromwell_root/
