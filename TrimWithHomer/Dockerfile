@@ -1,4 +1,5 @@
 # Filename: Dockerfile
+# Author: brian.sharber@vumc.org
 # Used for https://github.com/vangalenlab/MAESTER-2021
 # - briansha/maester_homer:4.11
 
