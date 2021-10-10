@@ -1,7 +1,7 @@
 # Filename: Dockerfile
+# Author: brian.sharber@vumc.org
 # Used for https://github.com/vangalenlab/MAESTER-2021
 # - briansha/maester_maegatk:v01
-# Author: brian.sharber@vumc.org
 
 FROM ubuntu:18.04
 
