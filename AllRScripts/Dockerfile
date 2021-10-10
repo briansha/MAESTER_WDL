@@ -1,4 +1,5 @@
 # Filename: Dockerfile
+# Author: brian.sharber@vumc.org
 # Used for https://github.com/vangalenlab/MAESTER-2021
 # - briansha/mitochondrial:4.1.0 - deprecated.
 # - briansha/maester:4.1.0
