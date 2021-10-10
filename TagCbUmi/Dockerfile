@@ -1,4 +1,5 @@
 # Filename: Dockerfile
+# Author: brian.sharber@vumc.org
 # Used for https://github.com/vangalenlab/MAESTER-2021
 # - briansha/maester_samtools:1.13
 
