@@ -6,4 +6,4 @@ Written using WDL - https://github.com/openwdl/wdl/blob/main/versions/developmen
 
 MAESTER: https://github.com/vangalenlab/MAESTER-2021
 
-Dockerfiles are provided for each task.
+Dockerfiles are provided.
