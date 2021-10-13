@@ -1,6 +1,6 @@
 version 1.0
 
-## Version 10-10-2021
+## Version 10-13-2021
 ##
 ## This workflow runs MAESTER.
 ## MAESTER Documentation: https://github.com/vangalenlab/MAESTER-2021
@@ -72,9 +72,8 @@ workflow maester {
     }
 
     output {
-        File output_stats = FilterBarcodes.output_stats
-        File output_fastq = FilterBarcodes.output_fastq
-        File output_sam = Star.output_sam
+        File maegatk_output = Maegatk.output_zipped_file
+        File mt_coverage_plots = MtCoverage.output_plot
     }
 
     meta {
@@ -127,7 +126,7 @@ task FilterBarcodes {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
@@ -397,7 +396,7 @@ task Maegatk {
     Int disk = select_first([disk_size_override, ceil(10.0 + 5.0 * input_bam_size)])
     Int cpu = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
 
-    # --snake-stdout default to true: Attempts to fix "AttributeError in line 30 of /usr/local/lib/python3.6/dist-packages/maegatk/bin/snake/Snakefile.maegatk.Gather: 'InputFiles' object has no attribute 'depths'"
+	# --snake-stdout default to true: Attempts to fix "AttributeError in line 30 of /usr/local/lib/python3.6/dist-packages/maegatk/bin/snake/Snakefile.maegatk.Gather: 'InputFiles' object has no attribute 'depths'"
     # alias python=python3 - does not work - instead used a symbolic link in the Dockerfile. ln -s /usr/bin/python3 /usr/bin/python
     command <<<
         set -euo pipefail
@@ -492,7 +491,7 @@ task MtCoverage {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
