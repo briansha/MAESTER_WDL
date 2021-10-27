@@ -106,7 +106,7 @@ task FilterBarcodes {
         Int maxRetries = 0
     }
     Float fastq_files_size = size(fastq_files, "GiB")
-    Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * fastq_files_size)])
+    Int disk = select_first([disk_size_override, ceil(10.0 + 2.0 * fastq_files_size)])
 
     # Useful commands
     # ls
