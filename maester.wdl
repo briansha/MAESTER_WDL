@@ -87,14 +87,15 @@ workflow maester {
 # and unique molecular identifiers (UMIs) from the Read 1 fastq in the read ID of the Read 2 fastq
 task FilterBarcodes {
     input {
-        File r_script        # Assemble_fastq.R - from the MAESTER github.
+        File r_script           # Assemble_fastq.R - from the MAESTER github.
+        Array[File] fastq_files # All R1 and R2 fastq files needed for this step.
 
         # Maester 1.1 parameters
-        File folder          # One or multiple directories containing fastq files, not searched recursively
-        String sampleName    # Sample name that will be used for output files
-        File cellBarcodes    # Allowlist of cell barcodes to filter by. Could be cells from the CellRanger filtered_feature_bc_matrix, or that passed scRNA-seq QC, or all whitelisted 10x cell barcodes.
-        Int CBlength         # Length of the cell barcode (16 for 10x 3' v3)
-        Int UMIlength        # Length of the UMI (12 for 10x 3' v3)
+        String folder = "FASTQ" # One or multiple directories containing fastq files, not searched recursively
+        String sampleName       # Sample name that will be used for output files
+        File cellBarcodes       # Allowlist of cell barcodes to filter by. Could be cells from the CellRanger filtered_feature_bc_matrix, or that passed scRNA-seq QC, or all whitelisted 10x cell barcodes.
+        Int CBlength            # Length of the cell barcode (16 for 10x 3' v3)
+        Int UMIlength           # Length of the UMI (12 for 10x 3' v3)
 
         # Runtime
         String docker
@@ -104,18 +105,20 @@ task FilterBarcodes {
         Int preemptible = 1
         Int maxRetries = 0
     }
-    Float folder_size = size(folder, "GiB")
-    Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * folder_size)])
-    String folderName = basename(folder, ".zip")
+    Float fastq_files_size = size(fastq_files, "GiB")
+    Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * fastq_files_size)])
 
     # Useful commands
     # ls
     # du -d 1 -h
     command <<<
         set -euo pipefail
-        unzip ~{folder}
+        mkdir ~{folder}
+        for file in ~{sep=' ' fastq_files}; do \
+          mv $file ~{folder}; \
+        done
 
-        R < ~{r_script} --no-save --args ~{folderName} ~{sampleName} ~{cellBarcodes} ~{CBlength} ~{UMIlength}
+        R < ~{r_script} --no-save --args ~{folder} ~{sampleName} ~{cellBarcodes} ~{CBlength} ~{UMIlength}
     >>>
 
     output {
