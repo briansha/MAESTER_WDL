@@ -105,7 +105,7 @@ task FilterBarcodes {
         Int maxRetries = 0
     }
     Float folder_size = size(folder, "GiB")
-    Int disk = select_first([disk_size_override, ceil(10.0 + 2.0 * folder_size)])
+    Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * folder_size)])
     String folderName = basename(folder, ".zip")
 
     # Useful commands
