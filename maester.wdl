@@ -151,7 +151,7 @@ task TrimWithHomer {
         Int maxRetries = 0
     }
     Float fastq_read2_size = size(fastq_read2, "GiB")
-    Int disk = select_first([disk_size_override, ceil(10.0 + 4.0 * fastq_read2_size)])
+    Int disk = select_first([disk_size_override, ceil(10.0 + 10.0 * fastq_read2_size)])
     String fastq_read2_filename = basename(fastq_read2)
 
     command <<<
