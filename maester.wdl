@@ -1,13 +1,13 @@
 version 1.0
 
-## Version 10-13-2021
+## Version 11-2-2021
 ##
 ## This workflow runs MAESTER.
 ## MAESTER Documentation: https://github.com/vangalenlab/MAESTER-2021
 ##
 ## Note: Maegatk task requires bcall or support parameter to be set to "true".
 ##
-## Cromwell version support - Successfully tested on v68
+## Cromwell version support - Successfully tested on v70
 ##
 ## Distributed under terms of the MIT License
 ## Copyright (c) 2021 Brian Sharber
@@ -100,13 +100,15 @@ task FilterBarcodes {
         # Runtime
         String docker
         Int? disk_size_override
-        Int cpu = 1
-        Float memory = 32.0
+        Float? memory_override
+        Int? cpu_override       # Note: More CPU will not make this task execute much faster
         Int preemptible = 1
         Int maxRetries = 0
     }
     Float fastq_files_size = size(fastq_files, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 2.0 * fastq_files_size)])
+    Float memory = select_first([memory_override, ceil(15.0 + (fastq_files_size / 0.444))])
+    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
 
     # Useful commands
     # ls
@@ -129,7 +131,7 @@ task FilterBarcodes {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
@@ -144,14 +146,17 @@ task TrimWithHomer {
 
         # Runtime
         String docker
-        Int? disk_size_override
-        Int cpu = 1
-        Float memory = 3.5
+        Int? disk_size_override  # The size of an unzipped fastq file must be considered here.
+                                 # 4.0 * fastq_read2_size results in not enough storage space.
+        Float? memory_override   # Calculation - 0.149 comes from run with (.523 GB fastq files / 3.5 GB memory required).
+        Int? cpu_override
         Int preemptible = 1
         Int maxRetries = 0
     }
     Float fastq_read2_size = size(fastq_read2, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 10.0 * fastq_read2_size)])
+    Float memory = select_first([memory_override, ceil(3.5 + (fastq_read2_size / 0.149))])
+    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
     String fastq_read2_filename = basename(fastq_read2)
 
     command <<<
@@ -168,7 +173,7 @@ task TrimWithHomer {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
@@ -184,14 +189,15 @@ task Star {
 
         # Runtime
         String docker
-        Int? disk_size_override
-        Int? cpu_override
-        Float memory = 32.0
+        Int? disk_size_override                # Consider the unzipped fastq file and the .sam output file
+        Float memory = 64.0
+        Int? cpu_override                      # STAR implements parallelism - double the CPU, halve the time spent.
         Int preemptible = 1
         Int maxRetries = 0
     }
     Float genomeDir_size = size(genomeDir, "GiB")
-    Int disk = select_first([disk_size_override, ceil(10.0 + 7.0 * genomeDir_size)])
+    Float fastq_read2_size = size(fastq_read2, "GiB")
+    Int disk = select_first([disk_size_override, ceil(10.0 + genomeDir_size + (20.0 * fastq_read2_size))])
     Int cpu = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
     String fastq_read2_filename = basename(fastq_read2)
     String fastq_read2_unzipped_filename = basename(fastq_read2, ".gz")
@@ -215,7 +221,7 @@ task Star {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
@@ -231,13 +237,15 @@ task TagCbUmi {
         # Runtime
         String docker
         Int? disk_size_override
-        Int cpu = 1
-        Float memory = 3.5
+        Float? memory_override
+        Int? cpu_override
         Int preemptible = 1
         Int maxRetries = 0
     }
     Float input_sam_size = size(input_sam, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * input_sam_size)])
+    Float memory = select_first([memory_override, ceil(3.5 + (input_sam_size / 1.11))])
+    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
     String input_bam = basename(input_sam, ".sam") + ".bam"
     String output_bam_name = basename(input_sam, ".sam") + ".10x.bam"
     String bash_script_current_dir = basename(bash_script)
@@ -274,13 +282,15 @@ task SubsetForChrM {
         # Runtime
         String docker
         Int? disk_size_override
-        Int cpu = 1
-        Float memory = 3.5
+        Float? memory_override
+        Int? cpu_override
         Int preemptible = 1
         Int maxRetries = 0
     }
     Float input_bam_10x_size = size(input_bam_10x, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * input_bam_10x_size)])
+    Float memory = select_first([memory_override, ceil(3.5 + (input_bam_10x_size / 0.163))])
+    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
     String input_bam_10x_sorted = basename(input_bam_10x, ".bam") + ".sorted.bam"
 
     command <<<
@@ -319,13 +329,15 @@ task MergeBamFiles {
         # Runtime
         String docker
         Int? disk_size_override
-        Int cpu = 1
-        Float memory = 3.5
+        Float? memory_override
+        Int? cpu_override
         Int preemptible = 1
         Int maxRetries = 0
     }
     Float input_scrna_seq_bam_size = size(input_scrna_seq_bam, "GiB")
-    Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * input_scrna_seq_bam_size)])
+    Int disk = select_first([disk_size_override, ceil(10.0 + 6.0 * input_scrna_seq_bam_size)])
+    Float memory = select_first([memory_override, ceil(3.5 + (input_scrna_seq_bam_size / 3.142))])
+    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
 
     command <<<
         set -euo pipefail
@@ -399,7 +411,7 @@ task Maegatk {
     Int disk = select_first([disk_size_override, ceil(10.0 + 5.0 * input_bam_size)])
     Int cpu = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
 
-    # --snake-stdout default to true: Attempts to fix "AttributeError in line 30 of /usr/local/lib/python3.6/dist-packages/maegatk/bin/snake/Snakefile.maegatk.Gather: 'InputFiles' object has no attribute 'depths'"
+	# --snake-stdout default to true: Attempts to fix "AttributeError in line 30 of /usr/local/lib/python3.6/dist-packages/maegatk/bin/snake/Snakefile.maegatk.Gather: 'InputFiles' object has no attribute 'depths'"
     # alias python=python3 - does not work - instead used a symbolic link in the Dockerfile. ln -s /usr/bin/python3 /usr/bin/python
     command <<<
         set -euo pipefail
@@ -469,7 +481,7 @@ task MtCoverage {
         String docker
         Int? disk_size_override
         Int cpu = 1
-        Float memory = 20.0
+        Float memory = 32.0
         Int preemptible = 1
         Int maxRetries = 0
     }
@@ -494,7 +506,7 @@ task MtCoverage {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
