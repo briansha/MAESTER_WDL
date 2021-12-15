@@ -197,7 +197,7 @@ task Star {
     }
     Float genomeDir_size = size(genomeDir, "GiB")
     Float fastq_read2_size = size(fastq_read2, "GiB")
-    Int disk = select_first([disk_size_override, ceil(10.0 + genomeDir_size + (20.0 * fastq_read2_size))])
+    Int disk = select_first([disk_size_override, ceil(40.0 + genomeDir_size + (40.0 * fastq_read2_size))])
     Int cpu = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
     String fastq_read2_filename = basename(fastq_read2)
     String fastq_read2_unzipped_filename = basename(fastq_read2, ".gz")
