@@ -481,7 +481,7 @@ task MtCoverage {
         String docker
         Int? disk_size_override
         Int cpu = 1
-        Float memory = 32.0
+        Float memory = 64.0
         Int preemptible = 1
         Int maxRetries = 0
     }
