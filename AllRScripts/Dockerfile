@@ -1,7 +1,6 @@
 # Filename: Dockerfile
 # Author: brian.sharber@vumc.org
 # Used for https://github.com/vangalenlab/MAESTER-2021
-# - briansha/mitochondrial:4.1.0 - deprecated.
 # - briansha/maester:4.1.0
 
 FROM ubuntu:18.04
@@ -59,7 +58,6 @@ RUN rm -r htslib-1.12
 #RUN Rscript mitochondrial.R
 
 # R packages
-RUN R -e "install.packages('tidyverse', dependencies=TRUE, repos = 'http://cran.us.r-project.org')"
 RUN R -e "install.packages('Matrix', dependencies=TRUE, repos = 'http://cran.us.r-project.org')"
 RUN R -e "install.packages('ggforce', dependencies=TRUE, repos = 'http://cran.us.r-project.org')"
 RUN R -e "install.packages('data.table', dependencies=TRUE, repos = 'http://cran.us.r-project.org')"
@@ -69,3 +67,4 @@ RUN R -e "install.packages('ggrastr', dependencies=TRUE, repos = 'http://cran.us
 RUN R -e "if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager', repos = 'http://cran.us.r-project.org'); library(BiocManager); BiocManager::install('ShortRead')"
 RUN R -e "if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager', repos = 'http://cran.us.r-project.org'); library(BiocManager); BiocManager::install('SummarizedExperiment')"
 RUN R -e "if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager', repos = 'http://cran.us.r-project.org'); library(BiocManager); BiocManager::install('ComplexHeatmap')"
+RUN R -e "if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager', repos = 'http://cran.us.r-project.org'); library(BiocManager); BiocManager::install('tidyverse')"
