@@ -1,13 +1,13 @@
 version 1.0
 
-## Version 11-2-2021
+## Version 3-1-2022
 ##
 ## This workflow runs MAESTER.
 ## MAESTER Documentation: https://github.com/vangalenlab/MAESTER-2021
 ##
 ## Note: Maegatk task requires bcall or support parameter to be set to "true".
 ##
-## Cromwell version support - Successfully tested on v70
+## Cromwell version support - Successfully tested on v77
 ##
 ## Distributed under terms of the MIT License
 ## Copyright (c) 2021 Brian Sharber
@@ -19,6 +19,8 @@ workflow maester {
         String docker_homer = "briansha/maester_homer:4.11"       # v4.11 of HOMER
         String docker_star = "briansha/star:2.7.9"                # v2.7.9 of STAR
         String docker_samtools = "briansha/maester_samtools:1.13" # v1.13 of samtools.
+        String docker_bamtools = "briansha/bamtools:latest"       # Latest version of bamtools.
+        String docker_gatk = "us.gcr.io/broad-gatk/gatk:4.1.6.0"  # gatk 4.1.6.0
         String docker_maegatk = "briansha/maester_maegatk:v01"    # v01 of maegatk.
     }
 
@@ -26,54 +28,75 @@ workflow maester {
       input:
         docker = docker
     }
-
     call TrimWithHomer {
       input:
         docker = docker_homer,
         fastq_read2 = FilterBarcodes.output_fastq
     }
-
     call Star {
       input:
         docker = docker_star,
         fastq_read2 = TrimWithHomer.output_fastq
     }
-
     call TagCbUmi {
       input:
         docker = docker_samtools,
         input_sam = Star.output_sam
     }
-
     call SubsetForChrM {
       input:
         docker = docker_samtools,
         input_bam_10x = TagCbUmi.output_bam_10x
     }
-
     call MergeBamFiles {
       input:
         docker = docker_samtools,
         input_maester_bam = SubsetForChrM.output_bam,
         input_maester_bai = SubsetForChrM.output_bai
     }
-
-    call Maegatk {
+    call SplitBarcodes {
       input:
-        docker = docker_maegatk,
-        input_bam = MergeBamFiles.output_merged_bam,
-        input_bai = MergeBamFiles.output_merged_bai
+        docker = docker_samtools
     }
 
-    call MtCoverage {
+    scatter(barcode_file in SplitBarcodes.barcodes_files) {
+        call Maegatk {
+          input:
+            docker = docker_maegatk,
+            input_bam = MergeBamFiles.output_merged_bam,
+            input_bai = MergeBamFiles.output_merged_bai,
+            barcodes = barcode_file
+        }
+    }
+
+
+    call GrabRDS {
       input:
         docker = docker,
-        input_folder = Maegatk.output_zipped_file
+        rds_files = Maegatk.output_zipped_file
     }
+# To-Do
+#    call MergeRDS {
+#      input:
+#        docker = docker,
+#        rds_files = GrabRDS.output_rds_files
+#    }
+#
+#
+#        call MtCoverage {
+#          input:
+#            docker = docker,
+#            input_folder = Maegatk.output_zipped_file,
+#            experiment_name = mtcoverage_experiment_name,
+#            metadata_df = mtcoverage_metadata_df,
+#            r_script = mtcoverage_r_script,
+#            r_script_source = mtcoverage_r_script_source
+#        }
+#    }
 
     output {
-        File maegatk_output = Maegatk.output_zipped_file
-        File mt_coverage_plots = MtCoverage.output_plot
+        Array[File] maegatk_rds_files = GrabRDS.output_rds_files
+        #File? mt_coverage_plots = MtCoverage.output_plot
     }
 
     meta {
@@ -107,8 +130,14 @@ task FilterBarcodes {
     }
     Float fastq_files_size = size(fastq_files, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 2.0 * fastq_files_size)])
-    Float memory = select_first([memory_override, ceil(15.0 + (fastq_files_size / 0.444))])
-    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+
+    # Terra-Specific - an N1 machine on GCP has a max of 624
+    Float memory_requested = select_first([memory_override, ceil(15.0 + (fastq_files_size / 0.444))])
+    Float memory = if memory_requested > 624.0 then 624.0 else memory_requested
+
+    # Don't want to request too much CPU
+    Int cpu_requested = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+    Int cpu = if cpu_requested > 64 then 64 else cpu_requested
 
     # Useful commands
     # ls
@@ -131,7 +160,7 @@ task FilterBarcodes {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
@@ -155,8 +184,13 @@ task TrimWithHomer {
     }
     Float fastq_read2_size = size(fastq_read2, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 10.0 * fastq_read2_size)])
-    Float memory = select_first([memory_override, ceil(3.5 + (fastq_read2_size / 0.149))])
-    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+
+    # Terra-Specific - an N1 machine on GCP has a max of 624
+    Float memory = if memory_requested > 624.0 then 624.0 else memory_requested
+    Float memory_requested = select_first([memory_override, ceil(3.5 + (fastq_read2_size / 0.149))])
+
+    Int cpu_requested = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+    Int cpu = if cpu_requested > 64 then 64 else cpu_requested
     String fastq_read2_filename = basename(fastq_read2)
 
     command <<<
@@ -173,7 +207,7 @@ task TrimWithHomer {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
@@ -198,7 +232,8 @@ task Star {
     Float genomeDir_size = size(genomeDir, "GiB")
     Float fastq_read2_size = size(fastq_read2, "GiB")
     Int disk = select_first([disk_size_override, ceil(40.0 + genomeDir_size + (40.0 * fastq_read2_size))])
-    Int cpu = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
+    Int cpu_requested = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
+    Int cpu = if cpu_requested > 64 then 64 else cpu_requested
     String fastq_read2_filename = basename(fastq_read2)
     String fastq_read2_unzipped_filename = basename(fastq_read2, ".gz")
 
@@ -221,7 +256,7 @@ task Star {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
@@ -244,8 +279,13 @@ task TagCbUmi {
     }
     Float input_sam_size = size(input_sam, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * input_sam_size)])
-    Float memory = select_first([memory_override, ceil(3.5 + (input_sam_size / 1.11))])
-    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+
+    # Terra-Specific - an N1 machine on GCP has a max of 624
+    Float memory_requested = select_first([memory_override, ceil(3.5 + (input_sam_size / 1.11))])
+    Float memory = if memory_requested > 624.0 then 624.0 else memory_requested
+
+    Int cpu_requested = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+    Int cpu = if cpu_requested > 64 then 64 else cpu_requested
     String input_bam = basename(input_sam, ".sam") + ".bam"
     String output_bam_name = basename(input_sam, ".sam") + ".10x.bam"
     String bash_script_current_dir = basename(bash_script)
@@ -289,8 +329,13 @@ task SubsetForChrM {
     }
     Float input_bam_10x_size = size(input_bam_10x, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 3.0 * input_bam_10x_size)])
-    Float memory = select_first([memory_override, ceil(3.5 + (input_bam_10x_size / 0.163))])
-    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+
+    # Terra-Specific - an N1 machine on GCP has a max of 624
+    Float memory_requested = select_first([memory_override, ceil(3.5 + (input_bam_10x_size / 0.163))])
+    Float memory = if memory_requested > 624.0 then 624.0 else memory_requested
+
+    Int cpu_requested = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+    Int cpu = if cpu_requested > 64 then 64 else cpu_requested
     String input_bam_10x_sorted = basename(input_bam_10x, ".bam") + ".sorted.bam"
 
     command <<<
@@ -336,8 +381,13 @@ task MergeBamFiles {
     }
     Float input_scrna_seq_bam_size = size(input_scrna_seq_bam, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 6.0 * input_scrna_seq_bam_size)])
-    Float memory = select_first([memory_override, ceil(3.5 + (input_scrna_seq_bam_size / 3.142))])
-    Int cpu = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+
+    # Terra-Specific - an N1 machine on GCP has a max of 624
+    Float memory_requested = select_first([memory_override, ceil(3.5 + (input_scrna_seq_bam_size / 3.142))])
+    Float memory = if memory_requested > 624.0 then 624.0 else memory_requested
+
+    Int cpu_requested = select_first([cpu_override, if memory > 36.0 then floor(memory / 32) else 1])
+    Int cpu = if cpu_requested > 64 then 64 else cpu_requested
 
     command <<<
         set -euo pipefail
@@ -360,6 +410,47 @@ task MergeBamFiles {
         maxRetries: maxRetries
     }
 }
+
+# Split barcodes file into x files.
+task SplitBarcodes {
+    input {
+        File barcodes
+        Int scatter_count = 500
+
+        # Runtime
+        String docker
+        Int? disk_size_override
+        Int cpu = 1
+        Float memory = 3.5
+        Int preemptible = 1
+        Int maxRetries = 0
+    }
+    String barcodes_current_dir = basename(barcodes)
+    Float barcodes_size = size(barcodes, "GiB")
+    Int disk = select_first([disk_size_override, ceil(10.0 + 2.0 * barcodes_size)])
+
+    command {
+        set -euo pipefail
+        cp ~{barcodes} .
+        split -~{scatter_count} -d ~{barcodes_current_dir} barcodes --additional-suffix=.txt
+        rm ~{barcodes_current_dir}
+        ls
+    }
+
+    runtime {
+        docker: docker
+        memory: memory + " GiB"
+        disks: "local-disk " + disk + " HDD"
+        cpu: cpu
+        preemptible: preemptible
+        maxRetries: maxRetries
+    }
+
+    output {
+        Array[File] barcodes_files = glob("*.txt")
+    }
+}
+
 
 # Run maegatk with options -mr 3 to use UMIs with >=3 reads
 # and -b to filter by high-quality CBs from scRNA-seq.
@@ -409,9 +500,10 @@ task Maegatk {
     }
     Float input_bam_size = size(input_bam, "GiB")
     Int disk = select_first([disk_size_override, ceil(10.0 + 5.0 * input_bam_size)])
-    Int cpu = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
+    Int cpu_requested = select_first([cpu_override, if memory > 6.5 then 2 * floor(memory / 8) else 1])
+    Int cpu = if cpu_requested > 64 then 64 else cpu_requested
 
-    # --snake-stdout default to true: Attempts to fix "AttributeError in line 30 of /usr/local/lib/python3.6/dist-packages/maegatk/bin/snake/Snakefile.maegatk.Gather: 'InputFiles' object has no attribute 'depths'"
+	# --snake-stdout default to true: Attempts to fix "AttributeError in line 30 of /usr/local/lib/python3.6/dist-packages/maegatk/bin/snake/Snakefile.maegatk.Gather: 'InputFiles' object has no attribute 'depths'"
     # alias python=python3 - does not work - instead used a symbolic link in the Dockerfile. ln -s /usr/bin/python3 /usr/bin/python
     command <<<
         set -euo pipefail
@@ -464,6 +556,112 @@ task Maegatk {
     }
 }
 
+# Grab all maegatk.rds files.
+task GrabRDS {
+    input {
+        Array[File] rds_files
+        String maegatk_full = "output_dir/final/maegatk.rds" # RDS file from maegatk.
+
+        # Runtime
+        String docker
+        Int? disk_size_override
+        Int cpu = 1
+        Float memory = 64.0
+        Int preemptible = 1
+        Int maxRetries = 0
+    }
+    Int rds_files_length = length(rds_files)
+    Float rds_files_size = size(rds_files, "GiB")
+    Int disk = select_first([disk_size_override, ceil(10.0 + 2.0 * rds_files_size)])
+    String maegatk_full_current_dir = basename(maegatk_full)
+
+    # mv maegatk.rds maegatk${count++}.rds
+    command <<<
+        set -euo pipefail
+        export count="1"
+        for file in ~{sep=' ' rds_files}; do \
+          unzip $file -d .; \
+          mv ~{maegatk_full} .; \
+          mv maegatk.rds maegatk${count}.rds; \
+          rm -r output_dir; \
+          count=$((count+1)); \
+        done
+        ls
+    >>>
+
+    output {
+        Array[File] output_rds_files = glob("*.rds")
+    }
+
+    runtime {
+        docker: docker
+        memory: memory + " GiB"
+		disks: "local-disk " + disk + " HDD"
+        cpu: cpu
+        preemptible: preemptible
+        maxRetries: maxRetries
+    }
+}
+
+# Merge all maegatk.rds files.
+task MergeRDS {
+    input {
+        Array[File] rds_files
+
+        # Runtime
+        String docker
+        Int? disk_size_override
+        Int cpu = 1
+        Float? memory_override
+        Int preemptible = 1
+        Int maxRetries = 0
+    }
+    Int rds_files_length = length(rds_files)
+    Float rds_files_size = size(rds_files, "GiB")
+    Float memory_requested = select_first([memory_override, ceil(16.0 + (rds_files_size * 41))])
+
+    # Terra-Specific - an N1 machine on GCP has a max of 624
+    Float memory = if memory_requested > 624.0 then 624.0 else memory_requested
+    Int disk = select_first([disk_size_override, ceil(10.0 + 2.0 * rds_files_size)])
+
+    # mv maegatk.rds maegatk${count++}.rds
+    command <<<
+        set -euo pipefail
+        R --no-save --args ~{sep=' ' rds_files} <<RSCRIPT
+        library(tidyverse)
+        library(dplyr)
+        library(purrr)
+        args <- commandArgs(trailingOnly = TRUE)
+        count <- 0
+        for (file in args) {
+            if (count == 0) {
+                merged <- readRDS(file)
+                count <- count+1
+            }
+            else {
+                df <- readRDS(file)
+                merged <- cbind(df, merged)
+            }
+        }
+        saveRDS(merged, file = "maegatk.rds")
+        RSCRIPT
+        ls
+    >>>
+
+    output {
+        File merged_rds_file = "maegatk.rds"
+    }
+
+    runtime {
+        docker: docker
+        memory: memory + " GiB"
+		disks: "local-disk " + disk + " HDD"
+        cpu: cpu
+        preemptible: preemptible
+        maxRetries: maxRetries
+    }
+}
+
 # Intersect common cell barcodes between scRNA-seq and MAESTER
 # and assess coverage along mitochondrial genome.
 task MtCoverage {
@@ -506,7 +704,7 @@ task MtCoverage {
     runtime {
         docker: docker
         memory: memory + " GiB"
-	disks: "local-disk " + disk + " HDD"
+		disks: "local-disk " + disk + " HDD"
         cpu: cpu
         preemptible: preemptible
         maxRetries: maxRetries
